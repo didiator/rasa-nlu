@@ -943,3 +943,11 @@ nlu:
     - Zwischenstecker 2
     - Zwischenstecker 3
     - Zwischenstecker 4
+
+- intent: nlu_fallback
+  examples: |
+    - hallo
+    - wie geht es dir
+    - was kannst du
+    - hilfe
+    - danke
