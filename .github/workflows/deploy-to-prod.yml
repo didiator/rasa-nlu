@@ -1,0 +1,130 @@
+name: Deploy Rasa NLU to PROD
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Manueller Trigger
+
+jobs:
+  deploy:
+    name: Deploy Rasa NLU to PROD Server
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup SSH Key
+        run: |
+          cp ~dgl/.ssh/github_prod ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+          echo "SSH Key configured!"
+      
+      - name: Deploy to PROD
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          export SSH_KEY=/home/dgl/.ssh/github_prod
+          export SSH_OPTS="-i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+          
+          # Projekt-Verzeichnis auf PROD erstellen
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} "mkdir -p ~/rasa-nlu"
+          
+          # Dateien synchronisieren (ohne venv, .git, __pycache__)
+          rsync -avz --delete \
+            -e "ssh $SSH_OPTS" \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='venv' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='models/*' \
+            ./ ${PROD_USER}@${PROD_HOST}:~/rasa-nlu/
+          
+          echo "✅ Files synchronized"
+      
+      - name: Setup Python Environment on PROD
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          export SSH_KEY=/home/dgl/.ssh/github_prod
+          export SSH_OPTS="-i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+          
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} << 'REMOTE'
+            cd ~/rasa-nlu
+            
+            # Python 3.10 venv erstellen falls nicht vorhanden
+            if [ ! -d "venv" ]; then
+              echo "Creating Python 3.10 virtual environment..."
+              /usr/bin/python3.10 -m venv venv
+            fi
+            
+            # Dependencies installieren
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install rasa==3.6.21
+            
+            echo "✅ Python environment ready"
+REMOTE
+      
+      - name: Train Rasa Model on PROD
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          export SSH_KEY=/home/dgl/.ssh/github_prod
+          export SSH_OPTS="-i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+          
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} << 'REMOTE'
+            cd ~/rasa-nlu
+            source venv/bin/activate
+            
+            # Modell trainieren
+            echo "Training Rasa NLU model..."
+            rasa train nlu
+            
+            echo "✅ Model trained"
+REMOTE
+      
+      - name: Install Systemd Service
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          export SSH_KEY=/home/dgl/.ssh/github_prod
+          export SSH_OPTS="-i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+          
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} << 'REMOTE'
+            # Systemd Service installieren
+            sudo cp ~/rasa-nlu/rasa-nlu.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+            sudo systemctl enable rasa-nlu
+            sudo systemctl restart rasa-nlu
+            
+            echo "✅ Systemd service installed and started"
+REMOTE
+      
+      - name: Verify Deployment
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          export SSH_KEY=/home/dgl/.ssh/github_prod
+          export SSH_OPTS="-i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+          
+          echo "Service status:"
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} "sudo systemctl status rasa-nlu --no-pager -l | head -20"
+          
+          echo ""
+          echo "Deployed version:"
+          ssh $SSH_OPTS ${PROD_USER}@${PROD_HOST} "cat ~/rasa-nlu/VERSION"
+      
+      - name: Deployment Summary
+        run: |
+          echo "✅ Rasa NLU Deployment to PROD successful!"
+          echo "Release: ${{ github.event.release.tag_name }}"
+          echo "Service: rasa-nlu.service running on PROD"
+          echo "Port: 5005"
