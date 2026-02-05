@@ -1,0 +1,15 @@
+[Unit]
+Description=Rasa NLU HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+User=dgl
+WorkingDirectory=/home/dgl/rasa-nlu
+Environment="PATH=/home/dgl/rasa-nlu/venv/bin:/usr/bin"
+ExecStart=/home/dgl/rasa-nlu/venv/bin/rasa run --enable-api --port 5005 --model models/nlu-20260205-104817-broad-slice.tar.gz
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
