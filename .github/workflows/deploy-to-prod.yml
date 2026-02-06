@@ -37,13 +37,7 @@ jobs:
           pip install --upgrade pip
           pip install rasa==3.6.21
           echo "✅ Python environment ready"
-      
-      - name: Train Rasa Model
-        run: |
-          cd ~/rasa-nlu
-          source venv/bin/activate
-          rasa train nlu
-          echo "✅ Model trained"
+          echo "ℹ️  Model training skipped - use 'rasa train nlu' manually if needed"
       
       - name: Install Systemd Service
         run: |
