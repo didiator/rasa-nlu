@@ -3,7 +3,13 @@ name: Deploy Rasa NLU to PROD
 on:
   release:
     types: [published]
-  workflow_dispatch:  # Manueller Trigger
+  workflow_dispatch:
+    inputs:
+      train_model:
+        description: 'Rasa Model trainieren? (Bei neuen Geräten/Intents/Entities)'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -37,7 +43,15 @@ jobs:
           pip install --upgrade pip
           pip install rasa==3.6.21
           echo "✅ Python environment ready"
-          echo "ℹ️  Model training skipped - use 'rasa train nlu' manually if needed"
+      
+      - name: Train Rasa Model
+        if: github.event.inputs.train_model == 'true'
+        run: |
+          cd ~/rasa-nlu
+          source venv/bin/activate
+          echo "🔄 Training Rasa Model (neue Geräte/Intents/Entities)..."
+          rasa train nlu
+          echo "✅ Model trained"
       
       - name: Install Systemd Service
         run: |
