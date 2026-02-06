@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-GITHUB_USER="didiator"
+GITHUB_USER="gleu82-de"
 GITHUB_REPO="rasa-nlu"
 GITHUB_TOKEN=$(grep 'token = ' ~/.gitconfig | awk '{print $3}')
 
@@ -21,7 +21,7 @@ VERSION="${INPUT:-$NEXT_VERSION}"
 echo "$VERSION" > VERSION
 TAG="v$VERSION"
 
-echo "=== STT Server Deployment: $TAG ==="
+echo "=== Rasa NLU Deployment: $TAG ==="
 
 git add -A
 git commit -m "Release $TAG" || true
@@ -29,10 +29,14 @@ git tag "$TAG"
 git push origin main
 git push origin "$TAG"
 
-curl -s -X POST \
+# JSON korrekt escapen mit jq
+RELEASE_BODY="Automated deployment of Rasa NLU $TAG"
+
+RESPONSE=$(curl -s -X POST \
   -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Content-Type: application/json" \
   https://api.github.com/repos/$GITHUB_USER/$GITHUB_REPO/releases \
-  -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\"}"
+  -d "$(jq -n --arg tag "$TAG" --arg body "$RELEASE_BODY" '{tag_name: $tag, name: $tag, body: $body}')")
 
 echo "✅ Release created, monitoring Actions..."
 
@@ -46,5 +50,5 @@ for i in {1..36}; do
     [ $((i % 6)) -eq 0 ] && echo "   Deploying..."
 done
 
-PROD_VER=$(ssh PROD "cat ~/stt-server/VERSION 2>/dev/null" || echo "?")
+PROD_VER=$(ssh PROD "cat ~/rasa-nlu/VERSION 2>/dev/null" || echo "?")
 echo "PROD: v$PROD_VER"
